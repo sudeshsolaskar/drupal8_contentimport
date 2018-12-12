@@ -96,7 +96,7 @@ class ContentImport extends ConfigFormBase {
     $contentType = $form_state->getValue('contentimport_contenttype');
     $fields = ContentImport::getFields($contentType);
     $fieldArray = $fields['name'];
-    $contentTypeFields = 'title,';
+    //$contentTypeFields = 'title,';
     $contentTypeFields .= 'langcode,';
     foreach ($fieldArray as $key => $val) {
       $contentTypeFields .= $val . ',';
@@ -455,16 +455,43 @@ class ContentImport extends ConfigFormBase {
           if (array_search('langcode', $data) === FALSE) {
             $nodeArray['langcode'] = 'en';
           }
-
+          //check for existing node data from selected content type
+          $query = db_select('node_field_data', 'n');
+          $query->fields('n');
+          $query->condition('type', strtolower($contentType), '=');
+          $query->condition('title', $nodeArray['title']['value'], '=');
+          $query->range(0,1);
+          $exec_query = $query->execute();
+          $exec_query->allowRowCount = TRUE;
+          $count = $exec_query->rowCount();
+          $result = $exec_query->fetchAll();
+          if($count > 0) {
+            $title_compare = 'exist';
+            $exist_nid  = $result['0']->nid;
+          } else {
+            $title_compare= $nodeArray['title']['value'];
+            $exist_nid  = '';
+          }
           $nodeArray['type'] = strtolower($contentType);
           $nodeArray['uid'] = 1;
           $nodeArray['promote'] = 0;
           $nodeArray['sticky'] = 0;
           if ($nodeArray['title']['value'] != '') {
-            $node = Node::create($nodeArray);
-            $node->save();
-            $logVariationFields .= "********************* Node Imported successfully ********************* \n\n";
-            fwrite($logFile, $logVariationFields);
+            if($nodeArray['title']['value'] != '' && $title_compare != 'exist'){
+              $node = Node::create($nodeArray);
+              $node->save();
+              $logVariationFields .= "********************* Node Imported successfully ********************* \n\n";
+              fwrite($logFile, $logVariationFields);
+            } else {
+              $node = \Drupal\node\Entity\Node::load($exist_nid);
+              foreach($nodeArray as $key => $value) {
+                $node->set($key, $value);
+                $node->save();
+                $logVariationFields .= "********************* Node Update successfully ********************* \n\n";
+                fwrite($logFile, $logVariationFields);
+              }
+            }
+            
           }
           $nodeArray = [];
         }
